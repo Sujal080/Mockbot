@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{test_title}} - TestBook Mock</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .timer-container {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-align: center;
+        }
+        .timer { font-size: 24px; font-weight: bold; }
+        .test-title { 
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4CAF50;
+        }
+        .test-content { margin-top: 70px; }
+        .btn {
+            background: #f0f0f0;
+            border: none;
+            padding: 5px 10px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn:hover { background: #ddd; }
+    </style>
+</head>
+<body>
+    <div class="timer-container">
+        <div class="timer" id="timer">{{timer_minutes}}:00</div>
+        <button class="btn" onclick="startTimer()">Start</button>
+        <button class="btn" onclick="pauseTimer()">Pause</button>
+        <button class="btn" onclick="resetTimer()">Reset</button>
+    </div>
+    
+    <h1 class="test-title">{{test_title}}</h1>
+    <div class="test-content">{{test_content}}</div>
+    
+    <script>
+        let timerInterval;
+        let totalSeconds = {{timer_minutes}} * 60;
+        let isRunning = false;
+        const timerElement = document.getElementById('timer');
+        
+        function updateTimerDisplay() {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            timerElement.textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (totalSeconds <= 0) {
+                clearInterval(timerInterval);
+                timerElement.style.color = 'red';
+                alert("Time's up!");
+            }
+        }
+        
+        function startTimer() {
+            if (!isRunning && totalSeconds > 0) {
+                isRunning = true;
+                timerInterval = setInterval(() => {
+                    totalSeconds--;
+                    updateTimerDisplay();
+                }, 1000);
+            }
+        }
+        
+        function pauseTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+        }
+        
+        function resetTimer() {
+            pauseTimer();
+            totalSeconds = {{timer_minutes}} * 60;
+            timerElement.style.color = 'white';
+            updateTimerDisplay();
+        }
+        
+        updateTimerDisplay();
+    </script>
+</body>
+</html>
