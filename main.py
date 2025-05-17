@@ -1,25 +1,14 @@
 import os
-import threading
-from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 from testbook_scraper import TestBookScraper
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
-# Flask app for health checks
-app = Flask(__name__)
-
-@app.route('/')
-def health_check():
-    return "TestBook Bot is running", 200
-
-# Telegram Bot Functions
 def start(update: Update, context: CallbackContext):
     if str(update.effective_chat.id) != ADMIN_CHAT_ID:
         update.message.reply_text("Unauthorized access.")
@@ -91,10 +80,7 @@ def handle_timer(update: Update, context: CallbackContext):
 def error(update: Update, context: CallbackContext):
     print(f"Update {update} caused error {context.error}")
 
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-def run_bot():
+def main():
     updater = Updater(TOKEN)
     dp = updater.dispatcher
     
@@ -107,9 +93,4 @@ def run_bot():
     updater.idle()
 
 if __name__ == '__main__':
-    # Start Flask in a separate thread
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-    
-    # Run the bot in main thread
-    run_bot()
+    main()
