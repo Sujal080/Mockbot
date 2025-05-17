@@ -1,6 +1,7 @@
 import os
 import threading
-from flask import Flask
+import logging
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,6 +14,13 @@ from telegram.ext import (
 from testbook_scraper import TestBookScraper
 from dotenv import load_dotenv
 
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -22,60 +30,67 @@ load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
-# Validate token
+# Validate configuration
 if not TOKEN or TOKEN == 'your_bot_token_here':
-    raise ValueError("Invalid Telegram token. Please set TELEGRAM_BOT_TOKEN in .env file")
+    raise ValueError("Missing or invalid Telegram token in .env file")
+if not ADMIN_CHAT_ID:
+    raise ValueError("Missing ADMIN_CHAT_ID in .env file")
 
-# Telegram Bot Handlers (same as before)
+# Global bot instance
+bot_application = None
+
+# Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("Unauthorized access.")
-        return
-    
-    await update.message.reply_text(
-        "📚 TestBook Mock Test Scraper Bot\n\n"
-        "Send me a TestBook test series URL (e.g., https://testbook.com/ssc-cgl/test-series)\n\n"
-        "I'll extract mock tests and send them in HTML format with timer functionality."
-    )
+    try:
+        if str(update.effective_chat.id) != ADMIN_CHAT_ID:
+            await update.message.reply_text("Unauthorized access.")
+            return
+        
+        await update.message.reply_text(
+            "📚 TestBook Mock Test Scraper Bot\n\n"
+            "Send me a TestBook test series URL (e.g., https://testbook.com/ssc-cgl/test-series)\n\n"
+            "I'll extract mock tests and send them in HTML format with timer functionality."
+        )
+    except Exception as e:
+        logger.error(f"Start command error: {e}")
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != ADMIN_CHAT_ID:
-        return
-    
-    url = update.message.text
-    if not url.startswith('https://testbook.com/') or '/test-series' not in url:
-        await update.message.reply_text("Please send a valid TestBook test series URL.")
-        return
-    
-    keyboard = [
-        [
-            InlineKeyboardButton("30 mins", callback_data=f"30|{url}"),
-            InlineKeyboardButton("60 mins", callback_data=f"60|{url}"),
-        ],
-        [
-            InlineKeyboardButton("90 mins", callback_data=f"90|{url}"),
-            InlineKeyboardButton("120 mins", callback_data=f"120|{url}"),
+    try:
+        if str(update.effective_chat.id) != ADMIN_CHAT_ID:
+            return
+        
+        url = update.message.text
+        if not url.startswith('https://testbook.com/') or '/test-series' not in url:
+            await update.message.reply_text("Please send a valid TestBook test series URL.")
+            return
+        
+        keyboard = [
+            [InlineKeyboardButton("30 mins", callback_data=f"30|{url}")],
+            [InlineKeyboardButton("60 mins", callback_data=f"60|{url}")],
+            [InlineKeyboardButton("90 mins", callback_data=f"90|{url}")],
+            [InlineKeyboardButton("120 mins", callback_data=f"120|{url}")]
         ]
-    ]
-    
-    await update.message.reply_text(
-        "⏱ Please select test duration:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        
+        await update.message.reply_text(
+            "⏱ Please select test duration:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"URL handling error: {e}")
 
 async def handle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if str(query.message.chat_id) != ADMIN_CHAT_ID:
-        return
-    
-    minutes, url = query.data.split('|')
-    minutes = int(minutes)
-    
-    await query.edit_message_text(f"⏳ Scraping mock tests from {url} with {minutes} minute timer...")
-    
     try:
+        query = update.callback_query
+        await query.answer()
+        
+        if str(query.message.chat_id) != ADMIN_CHAT_ID:
+            return
+        
+        minutes, url = query.data.split('|')
+        minutes = int(minutes)
+        
+        await query.edit_message_text(f"⏳ Scraping mock tests from {url} with {minutes} minute timer...")
+        
         scraper = TestBookScraper()
         mocks = scraper.scrape_test_series(url, minutes)
         
@@ -87,37 +102,61 @@ async def handle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         for mock in mocks:
-            with open(mock['html_file'], 'rb') as f:
-                await context.bot.send_document(
+            try:
+                with open(mock['html_file'], 'rb') as f:
+                    await context.bot.send_document(
+                        chat_id=query.message.chat_id,
+                        document=f,
+                        filename=f"mock_test_{mock['id']}.html",
+                        caption=f"🧠 {mock['title']}\n⏱ Timer: {minutes} minutes"
+                    )
+            except Exception as e:
+                logger.error(f"Error sending document: {e}")
+                await context.bot.send_message(
                     chat_id=query.message.chat_id,
-                    document=f,
-                    filename=f"mock_test_{mock['id']}.html",
-                    caption=f"🧠 {mock['title']}\n⏱ Timer: {minutes} minutes"
+                    text=f"❌ Error sending test: {str(e)}"
                 )
     except Exception as e:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=f"❌ Error scraping mock tests: {str(e)}"
-        )
+        logger.error(f"Timer handling error: {e}")
 
 # Flask Routes
 @app.route('/')
 def home():
-    return "TestBook Bot is running", 200
+    return {
+        "status": "running",
+        "service": "TestBook Bot",
+        "bot_status": "active" if bot_application else "inactive"
+    }, 200
 
 @app.route('/health')
 def health():
-    return {"status": "ok", "bot": "active"}, 200
+    return {
+        "status": "ok",
+        "bot_running": bot_application is not None and bot_application.running
+    }, 200
+
+@app.before_request
+def before_request():
+    logger.info(f"Incoming request: {request.method} {request.path}")
 
 def run_bot():
     """Run the Telegram bot in polling mode"""
-    application = Application.builder().token(TOKEN).build()
+    global bot_application
     
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-    application.add_handler(CallbackQueryHandler(handle_timer))
-    
-    application.run_polling()
+    try:
+        logger.info("Starting bot application...")
+        bot_application = Application.builder().token(TOKEN).build()
+        
+        bot_application.add_handler(CommandHandler("start", start))
+        bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+        bot_application.add_handler(CallbackQueryHandler(handle_timer))
+        
+        logger.info("Bot starting to poll...")
+        bot_application.run_polling()
+    except Exception as e:
+        logger.error(f"Bot crashed: {e}")
+        bot_application = None
+        raise
 
 if __name__ == '__main__':
     # Start bot in a separate thread
@@ -126,4 +165,5 @@ if __name__ == '__main__':
     
     # Start Flask server
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting Flask server on port {port}")
     app.run(host='0.0.0.0', port=port)
