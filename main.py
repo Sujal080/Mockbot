@@ -1,7 +1,8 @@
 import os
+import asyncio
 import threading
 import logging
-from flask import Flask, request
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -35,9 +36,6 @@ if not TOKEN or TOKEN == 'your_bot_token_here':
     raise ValueError("Missing or invalid Telegram token in .env file")
 if not ADMIN_CHAT_ID:
     raise ValueError("Missing ADMIN_CHAT_ID in .env file")
-
-# Global bot instance
-bot_application = None
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,40 +120,31 @@ async def handle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Flask Routes
 @app.route('/')
 def home():
-    return {
-        "status": "running",
-        "service": "TestBook Bot",
-        "bot_status": "active" if bot_application else "inactive"
-    }, 200
+    return {"status": "running", "service": "TestBook Bot"}, 200
 
 @app.route('/health')
 def health():
-    return {
-        "status": "ok",
-        "bot_running": bot_application is not None and bot_application.running
-    }, 200
-
-@app.before_request
-def before_request():
-    logger.info(f"Incoming request: {request.method} {request.path}")
+    return {"status": "ok"}, 200
 
 def run_bot():
     """Run the Telegram bot in polling mode"""
-    global bot_application
-    
     try:
         logger.info("Starting bot application...")
-        bot_application = Application.builder().token(TOKEN).build()
         
-        bot_application.add_handler(CommandHandler("start", start))
-        bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-        bot_application.add_handler(CallbackQueryHandler(handle_timer))
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        application = Application.builder().token(TOKEN).build()
+        
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+        application.add_handler(CallbackQueryHandler(handle_timer))
         
         logger.info("Bot starting to poll...")
-        bot_application.run_polling()
+        application.run_polling()
     except Exception as e:
         logger.error(f"Bot crashed: {e}")
-        bot_application = None
         raise
 
 if __name__ == '__main__':
