@@ -73,7 +73,7 @@ class TestBookBot:
 
             await update.message.reply_text(
                 "⏱ Select test duration:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard))
             
         except Exception as e:
             logger.error(f"URL handling error: {e}")
